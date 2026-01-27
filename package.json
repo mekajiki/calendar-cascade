@@ -1,0 +1,15 @@
+{
+  "name": "calendar-cascade",
+  "version": "1.0.0",
+  "description": "Sync personal calendar events to work calendar as Out of Office blocks",
+  "scripts": {
+    "push": "clasp push",
+    "pull": "clasp pull",
+    "open": "clasp open",
+    "logs": "clasp logs"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  },
+  "private": true
+}
