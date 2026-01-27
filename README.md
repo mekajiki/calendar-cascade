@@ -15,69 +15,94 @@
 - **Out of Office イベント**: 新規の予定招待を自動辞退
 - **複数カレンダー対応**: 複数のソースカレンダーを同期可能
 
+## アーキテクチャ
+
+```
+┌─────────────────┐      共有        ┌─────────────────┐
+│  個人アカウント   │ ──────────────▶ │  仕事用アカウント  │
+│                 │   (読み取り権限)   │                 │
+│  📅 個人カレンダー │                 │  🔧 GAS実行      │
+└─────────────────┘                 │       │         │
+                                    │       ▼         │
+                                    │  📅 仕事用primary │
+                                    │   (OOOイベント)   │
+                                    └─────────────────┘
+```
+
+**重要**: GAS は**仕事用アカウント**で実行する必要があります。Out of Office イベントは自分の primary カレンダーにしか作成できないためです。
+
 ## セットアップ
 
-### 前提条件
+### Step 1: 個人カレンダーを仕事用アカウントに共有
 
-- Node.js 20+
-- [clasp](https://github.com/google/clasp) がインストール済み
-- Google Apps Script プロジェクトを作成済み
+1. **個人アカウント**で [Google カレンダー](https://calendar.google.com) を開く
+2. 左側のカレンダー名の「⋮」→「設定と共有」
+3. 「特定のユーザーまたはグループと共有する」→「ユーザーやグループを追加」
+4. 仕事用アカウントのメールアドレスを入力
+5. 権限は「予定の表示（すべての予定の詳細）」以上を選択
+6. 「送信」
 
-### 1. リポジトリをクローン
+### Step 2: カレンダー ID を確認
+
+カレンダー ID の調べ方:
+
+1. [Google カレンダー](https://calendar.google.com) を開く
+2. 左側のカレンダー名の「⋮」→「設定と共有」
+3. 下にスクロールして「カレンダーの統合」セクション
+4. 「カレンダー ID」をコピー
+
+| カレンダー | ID の例 |
+|-----------|--------|
+| Gmail の primary | `yourname@gmail.com` または `primary` |
+| Google Workspace の primary | `yourname@company.com` または `primary` |
+| 追加カレンダー | `xxx@group.calendar.google.com` |
+
+### Step 3: GAS プロジェクトを作成（仕事用アカウントで）
 
 ```bash
+# リポジトリをクローン
 git clone https://github.com/Mekajiki/calendar-cascade.git
 cd calendar-cascade
 npm install
-```
 
-### 2. clasp 設定
-
-```bash
-# clasp にログイン（初回のみ）
+# 仕事用アカウントで clasp にログイン
 npx clasp login
 
-# .clasp.json を作成（既存プロジェクトにリンク）
-npx clasp clone <SCRIPT_ID> --rootDir src
-# または新規作成
+# GAS プロジェクトを新規作成
 npx clasp create --title "CalCascade" --rootDir src
-```
 
-### 3. GAS にプッシュ
+# .clasp.json をプロジェクトルートに移動（src/ 内に作成された場合）
+mv src/.clasp.json .clasp.json 2>/dev/null || true
 
-```bash
+# プッシュ
 npm run push
 ```
 
-### 4. GAS エディタで設定
+### Step 4: Script Properties を設定
 
-1. `npm run open` でブラウザで開く
+1. `npm run open` で GAS エディタを開く
+2. 左側の「⚙️ プロジェクトの設定」をクリック
+3. 下にスクロールして「スクリプト プロパティ」
+4. 「スクリプト プロパティを追加」で以下を設定:
 
-2. **Calendar API Advanced Service を有効化**
-   - 左側「サービス」→「+」→「Google Calendar API」を追加
+| プロパティ | 値 | 説明 |
+|-----------|-----|------|
+| `SOURCE_CALENDAR_IDS` | `personal@gmail.com` | 個人カレンダーの ID（カンマ区切りで複数可） |
+| `TARGET_CALENDAR_ID` | `primary` | 仕事用カレンダーの ID（通常は `primary`） |
 
-3. **Script Properties を設定**
-   - プロジェクトの設定 → スクリプトプロパティ
-   - 以下を追加:
+### Step 5: 動作確認
 
-   | プロパティ名 | 値の例 |
-   |------------|-------|
-   | `SOURCE_CALENDAR_IDS` | `personal@gmail.com, family@group.calendar.google.com` |
-   | `TARGET_CALENDAR_ID` | `primary` |
+GAS エディタで:
 
-### 5. 動作確認
+1. `testCalendarAccess` を実行 → カレンダーにアクセスできるか確認
+2. `setupTriggers` を実行 → EventUpdated トリガーを設定
+3. `showStatus` を実行 → 設定状態を確認
 
-1. `testCalendarAccess` を実行してカレンダーアクセス確認
-2. `setupTriggers` を実行してトリガーを設定
-3. `showStatus` で設定状態を確認
+### Step 6: テスト
 
-### 6. 個人カレンダーの共有設定
-
-**重要**: 個人カレンダーを仕事用アカウントに共有する必要があります。
-
-1. 個人アカウントで Google カレンダーを開く
-2. 設定 → カレンダーの設定 → 特定のユーザーと共有
-3. 仕事用アカウントを追加（「予定の詳細を表示」以上の権限）
+1. 個人カレンダーに予定を追加
+2. 仕事用カレンダーに「Private Block」OOO イベントが作成されることを確認
+3. 予定を編集/削除 → 反映されることを確認
 
 ## 使用方法
 
@@ -111,11 +136,24 @@ npm run push
 cat ~/.clasprc.json
 ```
 
-## 注意事項
+## トラブルシューティング
 
-- GAS は**仕事用アカウント**で実行してください（Out of Office イベントは primary にのみ作成可能）
-- Calendar API Advanced Service は clasp push では有効化されません。GAS エディタで手動有効化が必要です
-- `.clasp.json` には各自の script ID が入るため、`.gitignore` に追加済み
+### カレンダーにアクセスできない
+
+- 個人カレンダーが仕事用アカウントに共有されているか確認
+- 共有権限が「予定の表示（すべての予定の詳細）」以上か確認
+- `testCalendarAccess` でエラーメッセージを確認
+
+### OOO イベントが作成されない
+
+- GAS が仕事用アカウントで実行されているか確認
+- `TARGET_CALENDAR_ID` が `primary` または自分のカレンダーか確認
+- 実行ログでエラーを確認（GAS エディタ → 実行数）
+
+### 同期が遅れる
+
+- EventUpdated トリガーは最大数分の遅延があります
+- `fullSync()` で手動同期可能
 
 ## ディレクトリ構成
 
