@@ -1,34 +1,34 @@
 /**
  * CalCascade Configuration Module
  *
- * カレンダーIDはScript Propertiesから取得（ソースコードに含めない）
+ * Calendar IDs are retrieved from Script Properties (not included in source code)
  *
- * 設定方法:
- *   GASエディタ → プロジェクトの設定 → スクリプトプロパティ
+ * Setup:
+ *   GAS Editor -> Project Settings -> Script Properties
  *
- * 必要なプロパティ:
- *   SOURCE_CALENDAR_IDS - ソースカレンダーID（カンマ区切りで複数指定可）
- *   TARGET_CALENDAR_ID  - ターゲットカレンダーID（省略時は 'primary'）
+ * Required properties:
+ *   SOURCE_CALENDAR_IDS - Source calendar IDs (comma-separated for multiple)
+ *   TARGET_CALENDAR_ID  - Target calendar ID (defaults to 'primary')
  */
 
 /**
- * 設定オブジェクトを取得
- * @returns {Object} 設定オブジェクト
+ * Get configuration object
+ * @returns {Object} Configuration object
  */
 function getConfig() {
   const props = PropertiesService.getScriptProperties();
 
   return {
-    // Script Propertiesから取得（カンマ区切りで複数指定可）
+    // Retrieved from Script Properties (comma-separated for multiple)
     sourceCalendarIds: parseCalendarIds(props.getProperty('SOURCE_CALENDAR_IDS')),
     targetCalendarId: props.getProperty('TARGET_CALENDAR_ID') || 'primary',
 
-    // 固定設定
+    // Fixed settings
     syncDaysAhead: 90,
     eventTitle: 'Private Block',
     declineMessage: 'Busy with personal matters.',
 
-    // 差分同期用タグ（extendedPropertiesのキー名）
+    // Tags for incremental sync (extendedProperties key names)
     tags: {
       sourceEventId: 'calcascade_source_event_id',
       sourceCalendarId: 'calcascade_source_calendar_id',
@@ -38,9 +38,9 @@ function getConfig() {
 }
 
 /**
- * カンマ区切りのカレンダーID文字列をパース
- * @param {string} value - カンマ区切りの文字列
- * @returns {string[]} カレンダーIDの配列
+ * Parse comma-separated calendar ID string
+ * @param {string} value - Comma-separated string
+ * @returns {string[]} Array of calendar IDs
  */
 function parseCalendarIds(value) {
   if (!value) {
@@ -50,7 +50,7 @@ function parseCalendarIds(value) {
 }
 
 /**
- * 設定が有効かどうかを検証
+ * Validate configuration
  * @returns {Object} {valid: boolean, errors: string[]}
  */
 function validateConfig() {
@@ -58,11 +58,11 @@ function validateConfig() {
   const errors = [];
 
   if (config.sourceCalendarIds.length === 0) {
-    errors.push('SOURCE_CALENDAR_IDS が設定されていません');
+    errors.push('SOURCE_CALENDAR_IDS is not set');
   }
 
   if (!config.targetCalendarId) {
-    errors.push('TARGET_CALENDAR_ID が設定されていません');
+    errors.push('TARGET_CALENDAR_ID is not set');
   }
 
   return {

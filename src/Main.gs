@@ -1,24 +1,24 @@
 /**
  * CalCascade Main Module
  *
- * エントリーポイントとトリガー管理
+ * Entry point and trigger management
  */
 
 /**
- * 初期セットアップ: ソースカレンダーごとにEventUpdatedトリガーを作成
- * 初回のみ手動実行
+ * Initial setup: Create EventUpdated trigger for each source calendar
+ * Run manually only once
  */
 function setupTriggers() {
   const validation = validateConfig();
   if (!validation.valid) {
-    console.error('設定エラー:');
+    console.error('Configuration error:');
     validation.errors.forEach(err => console.error('  - ' + err));
     return;
   }
 
   const config = getConfig();
 
-  // 既存のトリガーを確認
+  // Check existing triggers
   const existingTriggers = ScriptApp.getProjectTriggers();
   const existingCalendarIds = new Set();
 
@@ -28,10 +28,10 @@ function setupTriggers() {
     }
   });
 
-  // 各ソースカレンダーにトリガーを作成
+  // Create trigger for each source calendar
   config.sourceCalendarIds.forEach(calendarId => {
     if (existingCalendarIds.has(calendarId)) {
-      log('トリガー既存: ' + calendarId);
+      log('Trigger exists: ' + calendarId);
       return;
     }
 
@@ -40,62 +40,62 @@ function setupTriggers() {
         .forUserCalendar(calendarId)
         .onEventUpdated()
         .create();
-      log('トリガー作成: ' + calendarId);
+      log('Trigger created: ' + calendarId);
     } catch (e) {
-      logError('トリガー作成エラー: ' + calendarId, e);
+      logError('Trigger creation error: ' + calendarId, e);
     }
   });
 
-  log('トリガーセットアップ完了');
+  log('Trigger setup complete');
 }
 
 /**
- * カレンダー変更時に自動発火するコールバック
- * @param {Object} e - トリガーイベントオブジェクト
+ * Callback fired automatically on calendar change
+ * @param {Object} e - Trigger event object
  */
 function onCalendarChange(e) {
   if (!e || !e.calendarId) {
-    logError('無効なトリガーイベント');
+    logError('Invalid trigger event');
     return;
   }
 
-  log('カレンダー変更検知: ' + e.calendarId);
+  log('Calendar change detected: ' + e.calendarId);
 
   try {
     syncFromCalendar(e.calendarId);
   } catch (error) {
-    logError('同期エラー: ' + e.calendarId, error);
+    logError('Sync error: ' + e.calendarId, error);
   }
 }
 
 /**
- * 全ソースカレンダーからフル同期
- * 取りこぼし対応用、手動実行または定期実行で使用
+ * Full sync from all source calendars
+ * For catching missed events, run manually or on schedule
  */
 function fullSync() {
   const validation = validateConfig();
   if (!validation.valid) {
-    console.error('設定エラー:');
+    console.error('Configuration error:');
     validation.errors.forEach(err => console.error('  - ' + err));
     return;
   }
 
   const config = getConfig();
-  log('=== フル同期開始 ===');
+  log('=== Full sync started ===');
 
   config.sourceCalendarIds.forEach(calendarId => {
     try {
       syncFromCalendar(calendarId);
     } catch (e) {
-      logError('同期エラー: ' + calendarId, e);
+      logError('Sync error: ' + calendarId, e);
     }
   });
 
-  log('=== フル同期完了 ===');
+  log('=== Full sync complete ===');
 }
 
 /**
- * Sync Tokenをリセットして次回フル同期を強制
+ * Reset Sync Tokens to force full sync on next run
  */
 function resetSyncTokens() {
   const config = getConfig();
@@ -104,14 +104,14 @@ function resetSyncTokens() {
   config.sourceCalendarIds.forEach(calendarId => {
     const key = 'SYNC_TOKEN_' + calendarId;
     props.deleteProperty(key);
-    log('Sync Tokenリセット: ' + calendarId);
+    log('Sync Token reset: ' + calendarId);
   });
 
-  log('全Sync Tokenをリセットしました。次回実行時にフル同期されます。');
+  log('All Sync Tokens reset. Full sync will run on next execution.');
 }
 
 /**
- * 全トリガーを削除
+ * Remove all triggers
  */
 function removeTriggers() {
   const triggers = ScriptApp.getProjectTriggers();
@@ -124,50 +124,50 @@ function removeTriggers() {
     }
   });
 
-  log('トリガー削除: ' + removed + '件');
+  log('Triggers removed: ' + removed);
 }
 
 /**
- * 現在の設定とトリガー状態を表示
+ * Display current configuration and trigger status
  */
 function showStatus() {
   const validation = validateConfig();
   const config = getConfig();
   const triggers = ScriptApp.getProjectTriggers();
 
-  console.log('=== CalCascade ステータス ===\n');
+  console.log('=== CalCascade Status ===\n');
 
-  // 設定
-  console.log('【設定】');
+  // Configuration
+  console.log('[Configuration]');
   if (validation.valid) {
-    console.log('ソースカレンダー:');
+    console.log('Source calendars:');
     config.sourceCalendarIds.forEach(id => console.log('  - ' + id));
-    console.log('ターゲットカレンダー: ' + config.targetCalendarId);
-    console.log('同期範囲: ' + config.syncDaysAhead + '日先まで');
-    console.log('イベントタイトル: ' + config.eventTitle);
+    console.log('Target calendar: ' + config.targetCalendarId);
+    console.log('Sync range: ' + config.syncDaysAhead + ' days ahead');
+    console.log('Event title: ' + config.eventTitle);
   } else {
-    console.log('✗ 設定エラー:');
+    console.log('NG: Configuration error:');
     validation.errors.forEach(err => console.log('  - ' + err));
   }
 
-  // トリガー
-  console.log('\n【トリガー】');
+  // Triggers
+  console.log('\n[Triggers]');
   const calendarTriggers = triggers.filter(t => t.getHandlerFunction() === 'onCalendarChange');
   if (calendarTriggers.length > 0) {
     calendarTriggers.forEach(t => {
       console.log('  - ' + t.getTriggerSourceId() + ' (EventUpdated)');
     });
   } else {
-    console.log('  トリガーなし（setupTriggersを実行してください）');
+    console.log('  No triggers (run setupTriggers)');
   }
 
   // Sync Token
-  console.log('\n【Sync Token】');
+  console.log('\n[Sync Token]');
   const props = PropertiesService.getScriptProperties();
   config.sourceCalendarIds.forEach(calendarId => {
     const token = props.getProperty('SYNC_TOKEN_' + calendarId);
-    console.log('  ' + calendarId + ': ' + (token ? '保存済み' : '未取得'));
+    console.log('  ' + calendarId + ': ' + (token ? 'Saved' : 'Not acquired'));
   });
 
-  console.log('\n=== ステータス表示完了 ===');
+  console.log('\n=== Status display complete ===');
 }

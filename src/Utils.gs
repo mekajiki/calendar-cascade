@@ -3,70 +3,70 @@
  */
 
 /**
- * カレンダーアクセスをテスト
- * 設定されたカレンダーにアクセスできるか確認する
+ * Test calendar access
+ * Verify access to configured calendars
  */
 function testCalendarAccess() {
   const validation = validateConfig();
   if (!validation.valid) {
-    console.error('設定エラー:');
+    console.error('Configuration error:');
     validation.errors.forEach(err => console.error('  - ' + err));
-    console.log('\nScript Propertiesを設定してください:');
-    console.log('  GASエディタ → プロジェクトの設定 → スクリプトプロパティ');
+    console.log('\nPlease set Script Properties:');
+    console.log('  GAS Editor -> Project Settings -> Script Properties');
     return;
   }
 
   const config = getConfig();
-  console.log('=== CalCascade カレンダーアクセステスト ===\n');
+  console.log('=== CalCascade Calendar Access Test ===\n');
 
-  // ソースカレンダーのテスト
-  console.log('【ソースカレンダー】');
+  // Test source calendars
+  console.log('[Source Calendars]');
   config.sourceCalendarIds.forEach(calendarId => {
     try {
       const calendar = CalendarApp.getCalendarById(calendarId);
       if (calendar) {
-        console.log('✓ ' + calendarId + ' - アクセス可能 (' + calendar.getName() + ')');
+        console.log('OK: ' + calendarId + ' - Accessible (' + calendar.getName() + ')');
       } else {
-        console.log('✗ ' + calendarId + ' - カレンダーが見つかりません');
+        console.log('NG: ' + calendarId + ' - Calendar not found');
       }
     } catch (e) {
-      console.log('✗ ' + calendarId + ' - エラー: ' + e.message);
+      console.log('NG: ' + calendarId + ' - Error: ' + e.message);
     }
   });
 
-  // ターゲットカレンダーのテスト
-  console.log('\n【ターゲットカレンダー】');
+  // Test target calendar
+  console.log('\n[Target Calendar]');
   try {
     const targetCalendar = config.targetCalendarId === 'primary'
       ? CalendarApp.getDefaultCalendar()
       : CalendarApp.getCalendarById(config.targetCalendarId);
 
     if (targetCalendar) {
-      console.log('✓ ' + config.targetCalendarId + ' - アクセス可能 (' + targetCalendar.getName() + ')');
+      console.log('OK: ' + config.targetCalendarId + ' - Accessible (' + targetCalendar.getName() + ')');
 
-      // Calendar API Advanced Serviceのテスト
+      // Test Calendar API Advanced Service
       try {
         Calendar.Events.list(config.targetCalendarId, { maxResults: 1 });
-        console.log('✓ Calendar API Advanced Service - 有効');
+        console.log('OK: Calendar API Advanced Service - Enabled');
       } catch (e) {
-        console.log('✗ Calendar API Advanced Service - 無効または未設定');
-        console.log('  → GASエディタ左側「サービス」→「+」→「Google Calendar API」を追加してください');
+        console.log('NG: Calendar API Advanced Service - Disabled or not configured');
+        console.log('  -> Add Google Calendar API from Services menu in GAS Editor');
       }
     } else {
-      console.log('✗ ' + config.targetCalendarId + ' - カレンダーが見つかりません');
+      console.log('NG: ' + config.targetCalendarId + ' - Calendar not found');
     }
   } catch (e) {
-    console.log('✗ ' + config.targetCalendarId + ' - エラー: ' + e.message);
+    console.log('NG: ' + config.targetCalendarId + ' - Error: ' + e.message);
   }
 
-  console.log('\n=== テスト完了 ===');
+  console.log('\n=== Test Complete ===');
 }
 
 /**
- * イベントの内容からハッシュを計算
- * 変更検知に使用
- * @param {Object} event - Calendar APIのイベントオブジェクト
- * @returns {string} ハッシュ文字列
+ * Compute hash from event content
+ * Used for change detection
+ * @param {Object} event - Calendar API event object
+ * @returns {string} Hash string
  */
 function computeEventHash(event) {
   const content = [
@@ -81,26 +81,26 @@ function computeEventHash(event) {
 }
 
 /**
- * 現在時刻から指定日数後のDateを取得
- * @param {number} days - 日数
- * @returns {Date} 計算後のDate
+ * Get Date after specified days from now
+ * @param {number} days - Number of days
+ * @returns {Date} Calculated Date
  */
 function addDays(days) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
 /**
- * ログ出力（タイムスタンプ付き）
- * @param {string} message - ログメッセージ
+ * Log output with timestamp
+ * @param {string} message - Log message
  */
 function log(message) {
   console.log('[' + new Date().toISOString() + '] ' + message);
 }
 
 /**
- * エラーログ出力
- * @param {string} message - エラーメッセージ
- * @param {Error} [error] - エラーオブジェクト
+ * Error log output
+ * @param {string} message - Error message
+ * @param {Error} [error] - Error object
  */
 function logError(message, error) {
   console.error('[' + new Date().toISOString() + '] ERROR: ' + message);

@@ -1,179 +1,179 @@
 # CalCascade
 
-個人カレンダーの予定を仕事用カレンダーに **Out of Office** イベントとして自動ブロックする Google Apps Script プロジェクト。
+A Google Apps Script project that automatically blocks personal calendar events on your work calendar as **Out of Office** events.
 
-## 概要
+## Overview
 
-- 個人アカウントのカレンダーに入れた予定を、仕事用アカウントのプライマリカレンダーに「Private Block」として自動反映
-- 他者から見ると「不在」として表示される
-- カレンダー変更時に即時同期（EventUpdated トリガー + Sync Token）
+- Automatically sync personal calendar events to your work account's primary calendar as "Private Block"
+- Others see you as "Out of Office"
+- Real-time sync on calendar changes (EventUpdated trigger + Sync Token)
 
-## 機能
+## Features
 
-- **リアルタイム同期**: カレンダー変更時に即時発火
-- **差分同期**: Sync Token で変更イベントのみ取得
-- **Out of Office イベント**: 新規の予定招待を自動辞退
-- **複数カレンダー対応**: 複数のソースカレンダーを同期可能
+- **Real-time sync**: Fires immediately on calendar changes
+- **Incremental sync**: Fetches only changed events using Sync Token
+- **Out of Office events**: Automatically declines new conflicting invitations
+- **Multiple calendars**: Supports syncing from multiple source calendars
 
-## アーキテクチャ
+## Architecture
 
 ```
-┌─────────────────┐      共有        ┌─────────────────┐
-│  個人アカウント   │ ──────────────▶ │  仕事用アカウント  │
-│                 │   (読み取り権限)   │                 │
-│  📅 個人カレンダー │                 │  🔧 GAS実行      │
-└─────────────────┘                 │       │         │
-                                    │       ▼         │
-                                    │  📅 仕事用primary │
-                                    │   (OOOイベント)   │
-                                    └─────────────────┘
++------------------+      Share       +------------------+
+|  Personal Acct   | --------------> |   Work Account   |
+|                  |   (read access)  |                  |
+|  Personal Cal    |                  |  GAS Execution   |
++------------------+                  |       |          |
+                                      |       v          |
+                                      |  Work Primary    |
+                                      |  (OOO events)    |
+                                      +------------------+
 ```
 
-**重要**: GAS は**仕事用アカウント**で実行する必要があります。Out of Office イベントは自分の primary カレンダーにしか作成できないためです。
+**Important**: GAS must run on the **work account**. Out of Office events can only be created on your own primary calendar.
 
-## セットアップ
+## Setup
 
-### Step 1: 個人カレンダーを仕事用アカウントに共有
+### Step 1: Share Personal Calendar with Work Account
 
-1. **個人アカウント**で [Google カレンダー](https://calendar.google.com) を開く
-2. 左側のカレンダー名の「⋮」→「設定と共有」
-3. 「特定のユーザーまたはグループと共有する」→「ユーザーやグループを追加」
-4. 仕事用アカウントのメールアドレスを入力
-5. 権限は「予定の表示（すべての予定の詳細）」以上を選択
-6. 「送信」
+1. Open [Google Calendar](https://calendar.google.com) with your **personal account**
+2. Click "..." next to the calendar name -> "Settings and sharing"
+3. "Share with specific people or groups" -> "Add people or groups"
+4. Enter your work account email address
+5. Select "See all event details" or higher permission
+6. Click "Send"
 
-### Step 2: カレンダー ID を確認
+### Step 2: Find Calendar ID
 
-カレンダー ID の調べ方:
+How to find Calendar ID:
 
-1. [Google カレンダー](https://calendar.google.com) を開く
-2. 左側のカレンダー名の「⋮」→「設定と共有」
-3. 下にスクロールして「カレンダーの統合」セクション
-4. 「カレンダー ID」をコピー
+1. Open [Google Calendar](https://calendar.google.com)
+2. Click "..." next to the calendar name -> "Settings and sharing"
+3. Scroll down to "Integrate calendar" section
+4. Copy "Calendar ID"
 
-| カレンダー | ID の例 |
-|-----------|--------|
-| Gmail の primary | `yourname@gmail.com` または `primary` |
-| Google Workspace の primary | `yourname@company.com` または `primary` |
-| 追加カレンダー | `xxx@group.calendar.google.com` |
+| Calendar | Example ID |
+|----------|------------|
+| Gmail primary | `yourname@gmail.com` or `primary` |
+| Google Workspace primary | `yourname@company.com` or `primary` |
+| Additional calendar | `xxx@group.calendar.google.com` |
 
-### Step 3: GAS プロジェクトを作成（仕事用アカウントで）
+### Step 3: Create GAS Project (on Work Account)
 
 ```bash
-# リポジトリをクローン
+# Clone repository
 git clone https://github.com/Mekajiki/calendar-cascade.git
 cd calendar-cascade
 npm install
 
-# 仕事用アカウントで clasp にログイン
+# Login to clasp with work account
 npx clasp login
 
-# GAS プロジェクトを新規作成
+# Create new GAS project
 npx clasp create --title "CalCascade" --rootDir src
 
-# .clasp.json をプロジェクトルートに移動（src/ 内に作成された場合）
+# Move .clasp.json to project root (if created in src/)
 mv src/.clasp.json .clasp.json 2>/dev/null || true
 
-# プッシュ
+# Push
 npm run push
 ```
 
-### Step 4: Script Properties を設定
+### Step 4: Set Script Properties
 
-1. `npm run open` で GAS エディタを開く
-2. 左側の「⚙️ プロジェクトの設定」をクリック
-3. 下にスクロールして「スクリプト プロパティ」
-4. 「スクリプト プロパティを追加」で以下を設定:
+1. Open GAS Editor with `npm run open`
+2. Click "Project Settings" (gear icon) on the left
+3. Scroll down to "Script Properties"
+4. Click "Add script property" and set:
 
-| プロパティ | 値 | 説明 |
-|-----------|-----|------|
-| `SOURCE_CALENDAR_IDS` | `personal@gmail.com` | 個人カレンダーの ID（カンマ区切りで複数可） |
-| `TARGET_CALENDAR_ID` | `primary` | 仕事用カレンダーの ID（通常は `primary`） |
+| Property | Value | Description |
+|----------|-------|-------------|
+| `SOURCE_CALENDAR_IDS` | `personal@gmail.com` | Personal calendar ID (comma-separated for multiple) |
+| `TARGET_CALENDAR_ID` | `primary` | Work calendar ID (usually `primary`) |
 
-### Step 5: 動作確認
+### Step 5: Verify Setup
 
-GAS エディタで:
+In GAS Editor:
 
-1. `testCalendarAccess` を実行 → カレンダーにアクセスできるか確認
-2. `setupTriggers` を実行 → EventUpdated トリガーを設定
-3. `showStatus` を実行 → 設定状態を確認
+1. Run `testCalendarAccess` -> Verify calendar access
+2. Run `setupTriggers` -> Set up EventUpdated triggers
+3. Run `showStatus` -> Check configuration status
 
-### Step 6: テスト
+### Step 6: Test
 
-1. 個人カレンダーに予定を追加
-2. 仕事用カレンダーに「Private Block」OOO イベントが作成されることを確認
-3. 予定を編集/削除 → 反映されることを確認
+1. Add an event to your personal calendar
+2. Verify "Private Block" OOO event is created on work calendar
+3. Edit/delete the event -> Verify changes are synced
 
-## 使用方法
+## Usage
 
-セットアップ完了後は自動で動作します。
+After setup, it works automatically.
 
-- **個人カレンダーに予定を追加** → 仕事用カレンダーに「Private Block」が作成される
-- **予定を編集/削除** → 自動で反映される
+- **Add event to personal calendar** -> "Private Block" is created on work calendar
+- **Edit/delete event** -> Automatically synced
 
-### 手動操作
+### Manual Operations
 
-| 関数 | 説明 |
-|------|------|
-| `fullSync()` | 全カレンダーをフル同期 |
-| `resetSyncTokens()` | Sync Token をリセット（次回フル同期） |
-| `showStatus()` | 現在の設定状態を表示 |
-| `removeTriggers()` | 全トリガーを削除 |
+| Function | Description |
+|----------|-------------|
+| `fullSync()` | Full sync from all calendars |
+| `resetSyncTokens()` | Reset Sync Tokens (forces full sync) |
+| `showStatus()` | Display current configuration status |
+| `removeTriggers()` | Remove all triggers |
 
-## GitHub Actions 自動デプロイ
+## GitHub Actions Auto Deploy
 
-`main` ブランチの `src/` 配下が変更されると自動でプッシュされます。
+Automatically pushes when `src/` changes on `main` branch.
 
-### 必要な Secrets
+### Required Secrets
 
-| Secret 名 | 内容 |
-|-----------|------|
-| `CLASPRC_JSON` | `~/.clasprc.json` の内容 |
-| `CLASP_JSON` | `.clasp.json` の内容 |
+| Secret Name | Content |
+|-------------|---------|
+| `CLASPRC_JSON` | Contents of `~/.clasprc.json` |
+| `CLASP_JSON` | Contents of `.clasp.json` |
 
 ```bash
-# ~/.clasprc.json の内容を取得
+# Get ~/.clasprc.json contents
 cat ~/.clasprc.json
 ```
 
-## トラブルシューティング
+## Troubleshooting
 
-### カレンダーにアクセスできない
+### Cannot access calendar
 
-- 個人カレンダーが仕事用アカウントに共有されているか確認
-- 共有権限が「予定の表示（すべての予定の詳細）」以上か確認
-- `testCalendarAccess` でエラーメッセージを確認
+- Verify personal calendar is shared with work account
+- Check sharing permission is "See all event details" or higher
+- Check error messages in `testCalendarAccess`
 
-### OOO イベントが作成されない
+### OOO events not created
 
-- GAS が仕事用アカウントで実行されているか確認
-- `TARGET_CALENDAR_ID` が `primary` または自分のカレンダーか確認
-- 実行ログでエラーを確認（GAS エディタ → 実行数）
+- Verify GAS is running on work account
+- Check `TARGET_CALENDAR_ID` is `primary` or your own calendar
+- Check execution logs (GAS Editor -> Executions)
 
-### 同期が遅れる
+### Sync is delayed
 
-- EventUpdated トリガーは最大数分の遅延があります
-- `fullSync()` で手動同期可能
+- EventUpdated trigger may have up to a few minutes delay
+- Use `fullSync()` for manual sync
 
-## ディレクトリ構成
+## Directory Structure
 
 ```
 calendar-cascade/
 ├── .github/workflows/
-│   └── deploy.yml          # GitHub Actions デプロイ
+│   └── deploy.yml          # GitHub Actions deploy
 ├── src/
-│   ├── appsscript.json     # GAS マニフェスト
-│   ├── Config.gs           # 設定モジュール
-│   ├── Main.gs             # エントリーポイント
-│   ├── CalendarSync.gs     # コア同期ロジック
-│   └── Utils.gs            # ユーティリティ
-├── .clasp.json             # clasp 設定（gitignore）
-├── .claspignore            # clasp 除外設定
+│   ├── appsscript.json     # GAS manifest
+│   ├── Config.gs           # Configuration module
+│   ├── Main.gs             # Entry point
+│   ├── CalendarSync.gs     # Core sync logic
+│   └── Utils.gs            # Utilities
+├── .clasp.json             # clasp config (gitignore)
+├── .claspignore            # clasp exclude config
 ├── .gitignore
 ├── package.json
 └── README.md
 ```
 
-## ライセンス
+## License
 
 MIT

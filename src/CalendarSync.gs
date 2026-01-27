@@ -1,16 +1,16 @@
 /**
  * CalCascade Calendar Sync Module
  *
- * Sync Tokenを使用した差分同期でソースカレンダーの変更を
- * ターゲットカレンダーにOut of Officeイベントとして反映
+ * Incremental sync using Sync Token to replicate source calendar changes
+ * to target calendar as Out of Office events
  */
 
 /**
- * 指定カレンダーから変更イベントを取得
- * Sync Tokenがあれば差分のみ、なければ初回フル取得
+ * Get changed events from specified calendar
+ * If Sync Token exists, get only changes; otherwise, full initial fetch
  *
- * @param {string} calendarId - ソースカレンダーID
- * @returns {Object[]} 変更されたイベントの配列
+ * @param {string} calendarId - Source calendar ID
+ * @returns {Object[]} Array of changed events
  */
 function getChangedEvents(calendarId) {
   const props = PropertiesService.getScriptProperties();
@@ -24,14 +24,14 @@ function getChangedEvents(calendarId) {
   };
 
   if (syncToken) {
-    // 差分同期: Sync Tokenで変更分のみ取得
+    // Incremental sync: get only changes with Sync Token
     options.syncToken = syncToken;
-    log('差分同期: ' + calendarId);
+    log('Incremental sync: ' + calendarId);
   } else {
-    // 初回: 未来の予定のみ取得
+    // Initial: get only future events
     options.timeMin = new Date().toISOString();
     options.timeMax = addDays(config.syncDaysAhead).toISOString();
-    log('初回同期: ' + calendarId + ' (' + config.syncDaysAhead + '日先まで)');
+    log('Initial sync: ' + calendarId + ' (' + config.syncDaysAhead + ' days ahead)');
   }
 
   let allEvents = [];
@@ -50,34 +50,34 @@ function getChangedEvents(calendarId) {
 
       pageToken = response.nextPageToken;
 
-      // 最後のページでSync Tokenを保存
+      // Save Sync Token on last page
       if (!pageToken && response.nextSyncToken) {
         props.setProperty(syncTokenKey, response.nextSyncToken);
-        log('Sync Token保存: ' + calendarId);
+        log('Sync Token saved: ' + calendarId);
       }
     } while (pageToken);
 
   } catch (e) {
-    // Sync Tokenが無効になった場合（410 Gone）はリセットしてフル同期
+    // If Sync Token is invalid (410 Gone), reset and do full sync
     if (e.message.includes('410') || e.message.includes('Sync token')) {
-      log('Sync Tokenが無効、リセットしてフル同期: ' + calendarId);
+      log('Sync Token invalid, resetting for full sync: ' + calendarId);
       props.deleteProperty(syncTokenKey);
-      return getChangedEvents(calendarId);  // 再帰呼び出し
+      return getChangedEvents(calendarId);  // Recursive call
     }
     throw e;
   }
 
-  log('取得イベント数: ' + allEvents.length);
+  log('Events fetched: ' + allEvents.length);
   return allEvents;
 }
 
 /**
- * ソースカレンダーから同期を実行
- * @param {string} sourceCalendarId - ソースカレンダーID
+ * Execute sync from source calendar
+ * @param {string} sourceCalendarId - Source calendar ID
  */
 function syncFromCalendar(sourceCalendarId) {
   const config = getConfig();
-  log('同期開始: ' + sourceCalendarId + ' → ' + config.targetCalendarId);
+  log('Sync started: ' + sourceCalendarId + ' -> ' + config.targetCalendarId);
 
   const events = getChangedEvents(sourceCalendarId);
 
@@ -86,34 +86,34 @@ function syncFromCalendar(sourceCalendarId) {
   events.forEach(event => {
     try {
       if (event.status === 'cancelled') {
-        // 削除されたイベント
+        // Deleted event
         if (deleteTargetEvent(event.id, sourceCalendarId, config)) {
           deleted++;
         }
       } else {
-        // 作成または更新
+        // Create or update
         const result = upsertTargetEvent(event, sourceCalendarId, config);
         if (result === 'created') created++;
         else if (result === 'updated') updated++;
         else skipped++;
       }
     } catch (e) {
-      logError('イベント処理エラー: ' + event.id, e);
+      logError('Event processing error: ' + event.id, e);
     }
   });
 
-  log('同期完了: 作成=' + created + ', 更新=' + updated + ', 削除=' + deleted + ', スキップ=' + skipped);
+  log('Sync complete: created=' + created + ', updated=' + updated + ', deleted=' + deleted + ', skipped=' + skipped);
 }
 
 /**
- * ターゲットカレンダーにイベントを作成または更新
- * @param {Object} sourceEvent - ソースイベント
- * @param {string} sourceCalendarId - ソースカレンダーID
- * @param {Object} config - 設定オブジェクト
- * @returns {string} 'created', 'updated', または 'skipped'
+ * Create or update event on target calendar
+ * @param {Object} sourceEvent - Source event
+ * @param {string} sourceCalendarId - Source calendar ID
+ * @param {Object} config - Configuration object
+ * @returns {string} 'created', 'updated', or 'skipped'
  */
 function upsertTargetEvent(sourceEvent, sourceCalendarId, config) {
-  // 終日イベントや過去のイベントはスキップ
+  // Skip all-day events and past events
   if (isAllDayEvent(sourceEvent)) {
     return 'skipped';
   }
@@ -122,38 +122,38 @@ function upsertTargetEvent(sourceEvent, sourceCalendarId, config) {
     return 'skipped';
   }
 
-  // 既存のターゲットイベントを検索
+  // Search for existing target event
   const existingEvent = findTargetEvent(sourceEvent.id, sourceCalendarId, config);
   const newHash = computeEventHash(sourceEvent);
 
   if (existingEvent) {
-    // 既存イベントがある場合、ハッシュで変更を確認
+    // If existing event found, check for changes with hash
     const existingHash = existingEvent.extendedProperties?.private?.[config.tags.contentHash];
     if (existingHash === newHash) {
-      return 'skipped';  // 変更なし
+      return 'skipped';  // No changes
     }
 
-    // 更新
+    // Update
     const updatedEvent = buildOutOfOfficeEvent(sourceEvent, sourceCalendarId, config, newHash);
     Calendar.Events.update(updatedEvent, config.targetCalendarId, existingEvent.id);
-    log('更新: ' + sourceEvent.id + ' → ' + existingEvent.id);
+    log('Updated: ' + sourceEvent.id + ' -> ' + existingEvent.id);
     return 'updated';
   } else {
-    // 新規作成
+    // Create new
     const newEvent = buildOutOfOfficeEvent(sourceEvent, sourceCalendarId, config, newHash);
     const created = Calendar.Events.insert(newEvent, config.targetCalendarId);
-    log('作成: ' + sourceEvent.id + ' → ' + created.id);
+    log('Created: ' + sourceEvent.id + ' -> ' + created.id);
     return 'created';
   }
 }
 
 /**
- * Out of Officeイベントオブジェクトを構築
- * @param {Object} sourceEvent - ソースイベント
- * @param {string} sourceCalendarId - ソースカレンダーID
- * @param {Object} config - 設定オブジェクト
- * @param {string} hash - コンテンツハッシュ
- * @returns {Object} Calendar APIイベントオブジェクト
+ * Build Out of Office event object
+ * @param {Object} sourceEvent - Source event
+ * @param {string} sourceCalendarId - Source calendar ID
+ * @param {Object} config - Configuration object
+ * @param {string} hash - Content hash
+ * @returns {Object} Calendar API event object
  */
 function buildOutOfOfficeEvent(sourceEvent, sourceCalendarId, config, hash) {
   return {
@@ -177,14 +177,14 @@ function buildOutOfOfficeEvent(sourceEvent, sourceCalendarId, config, hash) {
 }
 
 /**
- * ソースイベントIDに対応するターゲットイベントを検索
- * @param {string} sourceEventId - ソースイベントID
- * @param {string} sourceCalendarId - ソースカレンダーID
- * @param {Object} config - 設定オブジェクト
- * @returns {Object|null} ターゲットイベント、見つからない場合はnull
+ * Search for target event corresponding to source event ID
+ * @param {string} sourceEventId - Source event ID
+ * @param {string} sourceCalendarId - Source calendar ID
+ * @param {Object} config - Configuration object
+ * @returns {Object|null} Target event, or null if not found
  */
 function findTargetEvent(sourceEventId, sourceCalendarId, config) {
-  // extendedPropertiesのprivateプロパティで検索
+  // Search by extendedProperties private property
   const query = config.tags.sourceEventId + '=' + sourceEventId;
 
   try {
@@ -195,7 +195,7 @@ function findTargetEvent(sourceEventId, sourceCalendarId, config) {
     });
 
     if (response.items && response.items.length > 0) {
-      // 同じソースカレンダーからのイベントを探す
+      // Find event from same source calendar
       for (const event of response.items) {
         const eventSourceCalendarId = event.extendedProperties?.private?.[config.tags.sourceCalendarId];
         if (eventSourceCalendarId === sourceCalendarId) {
@@ -204,18 +204,18 @@ function findTargetEvent(sourceEventId, sourceCalendarId, config) {
       }
     }
   } catch (e) {
-    logError('ターゲットイベント検索エラー', e);
+    logError('Target event search error', e);
   }
 
   return null;
 }
 
 /**
- * ターゲットイベントを削除
- * @param {string} sourceEventId - ソースイベントID
- * @param {string} sourceCalendarId - ソースカレンダーID
- * @param {Object} config - 設定オブジェクト
- * @returns {boolean} 削除成功時true
+ * Delete target event
+ * @param {string} sourceEventId - Source event ID
+ * @param {string} sourceCalendarId - Source calendar ID
+ * @param {Object} config - Configuration object
+ * @returns {boolean} True if deletion succeeded
  */
 function deleteTargetEvent(sourceEventId, sourceCalendarId, config) {
   const existingEvent = findTargetEvent(sourceEventId, sourceCalendarId, config);
@@ -223,12 +223,12 @@ function deleteTargetEvent(sourceEventId, sourceCalendarId, config) {
   if (existingEvent) {
     try {
       Calendar.Events.remove(config.targetCalendarId, existingEvent.id);
-      log('削除: ' + sourceEventId + ' → ' + existingEvent.id);
+      log('Deleted: ' + sourceEventId + ' -> ' + existingEvent.id);
       return true;
     } catch (e) {
-      // 既に削除済みの場合は無視
+      // Ignore if already deleted
       if (!e.message.includes('404')) {
-        logError('イベント削除エラー', e);
+        logError('Event deletion error', e);
       }
     }
   }
@@ -237,18 +237,18 @@ function deleteTargetEvent(sourceEventId, sourceCalendarId, config) {
 }
 
 /**
- * 終日イベントかどうかを判定
- * @param {Object} event - Calendar APIイベント
- * @returns {boolean} 終日イベントの場合true
+ * Check if event is all-day event
+ * @param {Object} event - Calendar API event
+ * @returns {boolean} True if all-day event
  */
 function isAllDayEvent(event) {
   return !!(event.start?.date && !event.start?.dateTime);
 }
 
 /**
- * 過去のイベントかどうかを判定
- * @param {Object} event - Calendar APIイベント
- * @returns {boolean} 過去のイベントの場合true
+ * Check if event is in the past
+ * @param {Object} event - Calendar API event
+ * @returns {boolean} True if past event
  */
 function isPastEvent(event) {
   const endTime = event.end?.dateTime || event.end?.date;
