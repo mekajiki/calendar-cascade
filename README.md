@@ -35,12 +35,20 @@ A Google Apps Script project that automatically blocks personal calendar events 
 
 ### Step 1: Share Personal Calendar with Work Account
 
+**On your personal account:**
+
 1. Open [Google Calendar](https://calendar.google.com) with your **personal account**
 2. Click "..." next to the calendar name -> "Settings and sharing"
 3. "Share with specific people or groups" -> "Add people or groups"
 4. Enter your work account email address
 5. Select "See all event details" or higher permission
 6. Click "Send"
+
+**On your work account:**
+
+7. Open the invitation email sent to your work account
+8. Click "Add this calendar" link in the email
+9. The shared calendar will appear under "Other calendars" in Google Calendar
 
 ### Step 2: Find Calendar ID
 
