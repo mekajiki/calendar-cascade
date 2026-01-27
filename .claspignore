@@ -1,4 +1,5 @@
-# Ignore everything except src/
-**/**
-!src/**
-!appsscript.json
+# Ignore everything except .gs and .json files
+**/*.md
+**/*.txt
+**/node_modules/**
+**/.git/**
