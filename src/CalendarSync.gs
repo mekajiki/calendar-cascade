@@ -166,6 +166,10 @@ function buildOutOfOfficeEvent(sourceEvent, sourceCalendarId, config, hash) {
       autoDeclineMode: 'declineOnlyNewConflictingInvitations',
       declineMessage: config.declineMessage,
     },
+    reminders: {
+      useDefault: false,
+      overrides: [],
+    },
     extendedProperties: {
       private: {
         [config.tags.sourceEventId]: sourceEvent.id,
