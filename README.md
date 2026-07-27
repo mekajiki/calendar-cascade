@@ -14,6 +14,7 @@ A Google Apps Script project that automatically blocks personal calendar events 
 - **Incremental sync**: Fetches only changed events using Sync Token
 - **Out of Office events**: Automatically declines new conflicting invitations
 - **Multiple calendars**: Supports syncing from multiple source calendars
+- **Attendance filter**: Only events you have accepted (or your own events without invitees) are synced
 
 ## Architecture
 

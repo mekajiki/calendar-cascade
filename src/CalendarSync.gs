@@ -85,8 +85,8 @@ function syncFromCalendar(sourceCalendarId) {
 
   events.forEach(event => {
     try {
-      if (event.status === 'cancelled') {
-        // Deleted event
+      if (event.status === 'cancelled' || !isAcceptedEvent(event)) {
+        // Deleted or not-accepted event: remove existing copy if any
         if (deleteTargetEvent(event.id, sourceCalendarId, config)) {
           deleted++;
         }
@@ -238,6 +238,23 @@ function deleteTargetEvent(sourceEventId, sourceCalendarId, config) {
   }
 
   return false;
+}
+
+/**
+ * Check if the calendar owner is attending the event
+ * Events without invitees (own events) count as attending
+ * @param {Object} event - Calendar API event
+ * @returns {boolean} True if attending
+ */
+function isAcceptedEvent(event) {
+  if (!event.attendees) {
+    return true;
+  }
+  const self = event.attendees.find(a => a.self);
+  if (!self) {
+    return true;
+  }
+  return self.responseStatus === 'accepted';
 }
 
 /**
