@@ -70,7 +70,7 @@ How to find Calendar ID:
 
 ```bash
 # Clone repository
-git clone https://github.com/Mekajiki/calendar-cascade.git
+git clone https://github.com/mekajiki/calendar-cascade.git
 cd calendar-cascade
 npm install
 
