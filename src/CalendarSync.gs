@@ -76,6 +76,18 @@ function getChangedEvents(calendarId) {
  * @param {string} sourceCalendarId - Source calendar ID
  */
 function syncFromCalendar(sourceCalendarId) {
+  // One change often fires EventUpdated more than once. Without the lock,
+  // concurrent runs read the same Sync Token, both miss the copy and both insert it.
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5 * 60 * 1000);
+  try {
+    syncFromCalendarLocked(sourceCalendarId);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function syncFromCalendarLocked(sourceCalendarId) {
   const config = getConfig();
   log('Sync started: ' + sourceCalendarId + ' -> ' + config.targetCalendarId);
 
@@ -122,8 +134,12 @@ function upsertTargetEvent(sourceEvent, sourceCalendarId, config) {
     return 'skipped';
   }
 
-  // Search for existing target event
-  const existingEvent = findTargetEvent(sourceEvent.id, sourceCalendarId, config);
+  // Search for existing target event; drop duplicates left by earlier runs
+  const [existingEvent, ...duplicates] = findTargetEvents(sourceEvent.id, sourceCalendarId, config);
+  duplicates.forEach(event => {
+    Calendar.Events.remove(config.targetCalendarId, event.id);
+    log('Removed duplicate: ' + sourceEvent.id + ' -> ' + event.id);
+  });
   const newHash = computeEventHash(sourceEvent);
 
   if (existingEvent) {
@@ -181,37 +197,22 @@ function buildOutOfOfficeEvent(sourceEvent, sourceCalendarId, config, hash) {
 }
 
 /**
- * Search for target event corresponding to source event ID
+ * Search for target events corresponding to source event ID
+ * Errors propagate: treating a failed search as "not found" would insert a duplicate
  * @param {string} sourceEventId - Source event ID
  * @param {string} sourceCalendarId - Source calendar ID
  * @param {Object} config - Configuration object
- * @returns {Object|null} Target event, or null if not found
+ * @returns {Object[]} Target events from the same source calendar (empty if none)
  */
-function findTargetEvent(sourceEventId, sourceCalendarId, config) {
-  // Search by extendedProperties private property
-  const query = config.tags.sourceEventId + '=' + sourceEventId;
-
-  try {
-    const response = Calendar.Events.list(config.targetCalendarId, {
-      privateExtendedProperty: query,
-      singleEvents: true,
-      maxResults: 10,
-    });
-
-    if (response.items && response.items.length > 0) {
-      // Find event from same source calendar
-      for (const event of response.items) {
-        const eventSourceCalendarId = event.extendedProperties?.private?.[config.tags.sourceCalendarId];
-        if (eventSourceCalendarId === sourceCalendarId) {
-          return event;
-        }
-      }
-    }
-  } catch (e) {
-    logError('Target event search error', e);
-  }
-
-  return null;
+function findTargetEvents(sourceEventId, sourceCalendarId, config) {
+  const response = Calendar.Events.list(config.targetCalendarId, {
+    privateExtendedProperty: config.tags.sourceEventId + '=' + sourceEventId,
+    singleEvents: true,
+    maxResults: 250,
+  });
+  return (response.items || []).filter(event =>
+    event.extendedProperties?.private?.[config.tags.sourceCalendarId] === sourceCalendarId
+  );
 }
 
 /**
@@ -219,25 +220,17 @@ function findTargetEvent(sourceEventId, sourceCalendarId, config) {
  * @param {string} sourceEventId - Source event ID
  * @param {string} sourceCalendarId - Source calendar ID
  * @param {Object} config - Configuration object
- * @returns {boolean} True if deletion succeeded
+ * @returns {boolean} True if any copy was deleted
  */
 function deleteTargetEvent(sourceEventId, sourceCalendarId, config) {
-  const existingEvent = findTargetEvent(sourceEventId, sourceCalendarId, config);
+  const existingEvents = findTargetEvents(sourceEventId, sourceCalendarId, config);
 
-  if (existingEvent) {
-    try {
-      Calendar.Events.remove(config.targetCalendarId, existingEvent.id);
-      log('Deleted: ' + sourceEventId + ' -> ' + existingEvent.id);
-      return true;
-    } catch (e) {
-      // Ignore if already deleted
-      if (!e.message.includes('404')) {
-        logError('Event deletion error', e);
-      }
-    }
-  }
+  existingEvents.forEach(event => {
+    Calendar.Events.remove(config.targetCalendarId, event.id);
+    log('Deleted: ' + sourceEventId + ' -> ' + event.id);
+  });
 
-  return false;
+  return existingEvents.length > 0;
 }
 
 /**
